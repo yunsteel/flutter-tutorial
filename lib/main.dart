@@ -46,9 +46,21 @@ class MyAppState extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  void removeFavoriteItem(value) {
+    favorites.remove(value);
+  }
 }
 
-class MyHomePage extends StatelessWidget {
+// StatelessWidget -> 자체적으로 가진 로컬 state가 없음. 모두 context로부터 가져오는 중임
+class MyHomePage extends StatefulWidget {
+  @override
+  State<MyHomePage> createState() => _MyHomePageState();
+}
+
+class _MyHomePageState extends State<MyHomePage> {
+  var selectedIndex = 0;
+
   // 모든 위젯은 build() 내 상황이 바뀔 때 마다 최신 상태 유지함
   @override
   Widget build(BuildContext context) {
@@ -62,28 +74,50 @@ class MyHomePage extends StatelessWidget {
       icon = Icons.favorite_border;
     }
 
+    Widget page;
+    switch (selectedIndex) {
+      case 0:
+        page = GeneratorPage();
+      case 1:
+        page = FavoritePage();
+      default:
+        throw UnimplementedError("No widget for $selectedIndex");
+    }
+
     // 위젯은 중첩된 트리를 반환해야됨. 이때 최상위가 Scaffold
-    return Scaffold(
-      body: Center(
-          child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          BigCard(pair: pair),
-          SizedBox(height: 10),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ElevatedButton.icon(
-                  icon: Icon(icon),
-                  onPressed: appState.toggleFavorite,
-                  label: Text("좋아요")),
-              SizedBox(width: 10),
-              ElevatedButton(onPressed: appState.getNext, child: Text("Next"))
-            ],
-          )
-        ],
-      )),
-    );
+    return LayoutBuilder(builder: (context, constraints) {
+      // Layout builder의 builder callback은 constraints가 변할 때마다 호출된다.
+      // 예를 들면 유저가 창크기 바꾸거나, 폰 회전하거나
+      // 이 컴포넌트 옆에 있는 어떤 위젯이 커져서 얘가 작아지거나 등..
+      return Scaffold(
+        body: Row(
+          children: [
+            SafeArea(
+                // 노치나 status bar에 방해받지 않도록 보호됨
+                child: NavigationRail(
+              extended: constraints.maxWidth >= 600,
+              destinations: [
+                NavigationRailDestination(
+                    icon: Icon(Icons.home), label: Text("홈")),
+                NavigationRailDestination(
+                    icon: Icon(Icons.favorite), label: Text("좋아요"))
+              ],
+              selectedIndex: selectedIndex,
+              onDestinationSelected: (value) => {
+                setState(() {
+                  selectedIndex = value;
+                })
+              },
+            )),
+            Expanded(
+                child: Container(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              child: page,
+            ))
+          ],
+        ),
+      );
+    });
   }
 }
 
@@ -107,8 +141,82 @@ class BigCard extends StatelessWidget {
           child: Text(
             pair.asLowerCase,
             style: style,
-            semanticsLabel: "${pair.first} ${pair.second}",
+            semanticsLabel: "${pair.first} ${pair.second}", // 스크린 리더기
           )),
+    );
+  }
+}
+
+class GeneratorPage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    var appState = context.watch<MyAppState>();
+    var pair = appState.current;
+
+    IconData icon;
+    if (appState.favorites.contains(pair)) {
+      icon = Icons.favorite;
+    } else {
+      icon = Icons.favorite_border;
+    }
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          BigCard(pair: pair),
+          SizedBox(height: 10),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: appState.toggleFavorite,
+                label: Text("좋아요"),
+                icon: Icon(icon),
+              ),
+              SizedBox(width: 10),
+              ElevatedButton(onPressed: appState.getNext, child: Text("다음으로"))
+            ],
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class FavoritePage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    var appState = context.watch<MyAppState>();
+
+    if (appState.favorites.isEmpty) {
+      return Center(
+        child: Text("좋아요가 없어양 ㅠㅠ"),
+      );
+    }
+
+    return ListView(children: [
+      Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text("You have ${appState.favorites.length} favorites.")),
+      for (var favorite in appState.favorites)
+        ListTile(
+            leading: Icon(Icons.favorite),
+            title: Text(appState.current.asLowerCase))
+    ]);
+
+    return Column(
+      children: [
+        for (var favorite in appState.favorites)
+          Row(children: [
+            Text(favorite.join(" ")),
+            SizedBox(width: 10),
+            ElevatedButton.icon(
+                onPressed: () => appState.removeFavoriteItem(favorite),
+                icon: Icon(Icons.delete),
+                label: Text("삭제"))
+          ])
+      ],
     );
   }
 }
